@@ -67,6 +67,8 @@
       <span>共 {{ total }} 条运维值班交接记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <HandoverPanel />
   </section>
 </template>
 
@@ -79,6 +81,7 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import HandoverPanel from '@/components/HandoverPanel.vue'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('duty')

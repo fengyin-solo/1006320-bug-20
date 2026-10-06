@@ -1,5 +1,7 @@
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { allRows, commit, listRows, resetRows } from '@/data/local-store'
+import { ENV_KEY, envOverview } from '@/data/env-rules'
+import { judgeEnvRecord } from './env-service'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -28,7 +30,11 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
+/** 环境监测动作入口：判定正常/标记超标必须走统一口径，禁止通用流转硬写状态。 */
 export function runAction(key: string, id: number, action: string): ActionResult {
+  if (key === ENV_KEY && (action === '判定正常' || action === '标记超标')) {
+    return judgeEnvRecord(id, action === '判定正常' ? '指标正常' : '指标超标')
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -50,9 +56,12 @@ export function runAction(key: string, id: number, action: string): ActionResult
     pending: target !== lastStatus,
     abnormal: NEGATIVE_ACTIONS.some((verb) => action.startsWith(verb)),
   }
-  const next = [...rows]
-  next[index] = updated
-  saveRows(key, next)
+  const result = commit((draft) => {
+    draft.entries[key][index] = updated
+  })
+  if (!result.ok) {
+    return { ok: false, message: `落库失败，已整套退回：${result.error.message}` }
+  }
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
 }
 
@@ -61,14 +70,23 @@ export function resetModule(key: string): PageResult {
   return listEntries(key)
 }
 
+function csvCell(value: unknown): string {
+  const text = String(value ?? '')
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+/** 另存清单：读的是台账当前同一份数据，超标标记随记录状态实时带出。 */
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
-  const header = ['编号', ...meta.fields, '当前状态']
-  const lines = [header.join(',')]
+  const header = ['编号', ...meta.fields, '当前状态', '超标标记']
+  const lines = [header.map(csvCell).join(',')]
   for (const row of listRows(key)) {
-    lines.push([row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status].join(','))
+    const flag = row.abnormal ? '超标' : '正常'
+    lines.push(
+      [row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status, flag].map(csvCell).join(','),
+    )
   }
-  return { filename: `${meta.name}-清单.csv`, content: `\uFEFF${lines.join('\n')}` }
+  return { filename: `${meta.name}-清单.csv`, content: `﻿${lines.join('\n')}` }
 }
 
 export function downloadEntries(key: string): void {
@@ -84,10 +102,24 @@ export function downloadEntries(key: string): void {
   URL.revokeObjectURL(url)
 }
 
+/**
+ * 概览汇总：异常量按各模块的当前记录重算，绝不做「点一次加一次」的累加。
+ * 廊内环境监测这一格的待处理/异常量取自 envOverview 的点位口径，
+ * 与环境监测页列表、看板、另存清单读到的是同一份判定结果（氧气浓度也在此统一口径内）。
+ */
 export function loadOverview(): OverviewResult {
   const rows = allRows()
+  const envSummary = envOverview(rows[ENV_KEY] ?? [])
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
     const entries = rows[meta.key] ?? []
+    if (meta.key === ENV_KEY) {
+      return {
+        name: meta.name,
+        created: entries.length,
+        pending: envSummary.waitingPoints + envSummary.confirmPoints,
+        abnormal: envSummary.overPoints,
+      }
+    }
     return {
       name: meta.name,
       created: entries.length,

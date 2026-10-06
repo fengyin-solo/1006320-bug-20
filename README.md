@@ -68,4 +68,18 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 廊内环境监测的温度/湿度/氧气/有害气体判定口径集中在
+  `frontend/src/data/env-rules.ts`，概览、列表、另存清单共用；超标点位数按监测点位的最新
+  记录重算。上报去重、往期搬运、缺项补录、落库回滚与交接清单的处理口径见
+  `frontend/docs/envmonitor-handling.md`，交接清单在环境监测页与运维值班交接页两处同一份。
+- 所有写操作走 `frontend/src/data/local-store.ts` 的 `commit` 事务，落库失败整套退回，不留中间态。
 - 想回到初始数据：清掉浏览器里 `urban-utility-tunnel:entries` 这一项，或调用 `resetModule(模块)`。
+
+## 验证
+
+```bash
+cd frontend
+npm run typecheck   # 类型检查
+npm run build       # 生产构建
+npm run test:e2e    # 环境监测链路验证（内存 localStorage，20 项断言）
+```
