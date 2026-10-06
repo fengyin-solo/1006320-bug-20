@@ -63,6 +63,20 @@
       </tbody>
     </table>
 
+    <section class="handover-box">
+      <header class="handover-head">
+        <h3>入廊作业审批结论（与「入廊作业审批」页同一份）</h3>
+        <button class="btn ghost" type="button" @click="loadHandover">刷新</button>
+      </header>
+      <ul v-if="handoverLines.length" class="handover-list">
+        <li v-for="line in handoverLines" :key="`${line.applyId}-${line.time}`">
+          <span class="handover-time">{{ line.time }}</span>
+          {{ line.text }}
+        </li>
+      </ul>
+      <p v-else class="empty-state">暂无已同步的审批结论。</p>
+    </section>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条运维值班交接记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
@@ -75,11 +89,12 @@ import { computed, onMounted, ref } from 'vue'
 
 import {
   downloadEntries,
+  handoverEntries,
   listEntries,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import type { EntryRow, HandoverLine } from '@/data/types'
 
 const meta = moduleMeta('duty')
 const columns = ["交接编号", "值班班组", "值班日期", "班次", "值班人员", "交接事项", "交接人员", "交接状态"]
@@ -90,6 +105,7 @@ const stats = [{"label": "待交接班次", "value": 0}, {"label": "已交接班
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const handoverLines = ref<HandoverLine[]>([])
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
@@ -122,6 +138,10 @@ function runAction(action: string, row: EntryRow) {
   reload()
 }
 
+function loadHandover() {
+  handoverLines.value = handoverEntries()
+}
+
 function reload() {
   errorMessage.value = ''
   try {
@@ -133,5 +153,8 @@ function reload() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  reload()
+  loadHandover()
+})
 </script>
